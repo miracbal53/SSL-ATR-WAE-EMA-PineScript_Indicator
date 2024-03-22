@@ -1,0 +1,170 @@
+//@version=5
+indicator(title='Jora Store İndikatörü', overlay=true )
+
+// 200 Ema
+
+ema200 = ta.ema(close, 200)
+plot(ema200, color=color.orange, linewidth=2)
+
+// SSL 
+
+period = input.int(title="Period", defval=21)
+length = input.int(title="Length", defval=21)
+
+smaHigh = ta.sma(high, length)
+smaLow = ta.sma(low, length)
+
+var float Hlv = na
+Hlv := close > smaHigh ? 1 : close < smaLow ? -1 : Hlv[1]
+
+sslDown = Hlv < 0 ? smaHigh : smaLow
+sslUp = Hlv < 0 ? smaLow : smaHigh
+
+plot(sslDown, linewidth=2, color=color.red)
+plot(sslUp, linewidth=2, color=color.green)
+
+
+// ATR
+
+// Inputs
+atrPeriod = input.int(title = "ATR Period", defval = 14, minval = 1)
+srcUpper = input.source(title = "Source Upper", defval = close)
+srcLower = input.source(title = "Source Lower", defval = close)
+atrMultiplierUpper = input.float(title = "ATR Multiplier Upper", defval = 1.0)
+atrMultiplierLower = input.float(title = "ATR Multiplier Lower", defval = 1.0)
+
+// ATR
+atr = ta.atr(atrPeriod)
+
+// Plotting
+plot(srcUpper + atr * atrMultiplierUpper, color = color.white)
+plot(srcLower - atr * atrMultiplierLower, color = color.white)
+
+atrUpperBand = srcUpper + atr * atrMultiplierUpper
+atrLowerBand = srcLower - atr * atrMultiplierLower
+
+// Waddah Attar 
+
+sensitivity = input(150, title="Sensitivity")
+fastLength=input(20, title="FastEMA Length")
+slowLength=input(40, title="SlowEMA Length")
+channelLength=input(20, title="BB Channel Length")
+mult=input(2.0, title="BB Stdev Multiplier")
+
+DEAD_ZONE = nz(ta.rma(ta.tr(true),100)) * 3.7
+
+calc_macd(source, fastLength, slowLength) =>
+	fastMA = ta.ema(source, fastLength)
+	slowMA = ta.ema(source, slowLength)
+	fastMA - slowMA
+
+calc_BBUpper(source, length, mult) => 
+	basis = ta.sma(source, length)
+	dev = mult * ta.stdev(source, length)
+	basis + dev
+
+calc_BBLower(source, length, mult) => 
+	basis = ta.sma(source, length)
+	dev = mult * ta.stdev(source, length)
+	basis - dev
+
+t1 = (calc_macd(close, fastLength, slowLength) - calc_macd(close[1], fastLength, slowLength))*sensitivity
+
+e1 = (calc_BBUpper(close, channelLength, mult) - calc_BBLower(close, channelLength, mult))
+
+trendUp = (t1 >= 0) ? t1 : 0
+trendDown = (t1 < 0) ? (-1*t1) : 0
+
+//plot(trendUp, style=plot.style_columns, linewidth=1, color=(trendUp<trendUp[1])?color.lime:color.green, transp=45, title="UpTrend")
+//plot(trendDown, style=plot.style_columns, linewidth=1, color=(trendDown<trendDown[1])?color.orange:color.red, transp=45, title="DownTrend")
+//plot(e1, style=plot.style_line, linewidth=2, color=#A0522D, title="ExplosionLine")
+//plot(DEAD_ZONE, color=color.blue, linewidth=1, style=plot.style_cross, title="DeadZoneLine")
+
+// Strategy Rules 
+
+last_5_candles_above_ema200 = close[0] > ema200 and close[1] > ema200 and close[2] > ema200 and close[3] > ema200 and close[4] > ema200
+last_5_candles_under_ema200 = close[0] < ema200 and close[1] < ema200 and close[2] < ema200 and close[3] < ema200 and close[4] < ema200
+
+ssl_cross_up = ta.crossover(sslUp, sslDown)
+ssl_cross_down = ta.crossunder(sslUp,sslDown)
+
+upTrend_Condition = trendUp > e1 and trendUp > DEAD_ZONE
+downTrend_Condition = trendDown > e1 and trendDown > DEAD_ZONE
+
+longCondition = last_5_candles_above_ema200 and ssl_cross_up and upTrend_Condition
+shortCondition = last_5_candles_under_ema200 and ssl_cross_down and downTrend_Condition
+
+
+var float longTP = na
+var float longSL = na
+
+var float shortTP = na
+var float shortSL = na
+
+var bool longPosition = false 
+var bool longPosition2 = false
+var bool shortPosition = false
+var bool shortPosition2 = false
+
+var float longEntryPrice = na
+var float shortEntryPrice = na 
+
+
+
+if (longCondition and not longPosition and not longPosition2 and not shortPosition and not shortPosition2)
+    longEntryPrice := close
+    longTP := atrUpperBand
+    longSL := atrLowerBand
+    label.new(x = bar_index, y = high + ta.valuewhen(longCondition, 0.5 * ta.atr(14), 0), yloc = yloc.abovebar, text = "LONG\n Fiyat :  "+ str.tostring(longEntryPrice, "#.##") +"\nTP  " + str.tostring(longTP, "#.##") + "\nSL: " + str.tostring(longSL, "#.##"), color = color.green, textcolor = color.rgb(0, 0, 0), style = label.style_label_down)
+    longPosition := true
+    longPosition2 := true
+
+if (close>longTP  and longPosition )
+    label.new(x = bar_index, y = high , yloc = yloc.abovebar, text = "LONG 1. TP  ", color = color.green, textcolor = color.rgb(0, 0, 0), style = label.style_label_down)
+    longPosition := false
+    longPosition2 := true
+
+if ((longPosition or longPosition2) and ssl_cross_down)
+    if (close >= longEntryPrice)
+        label.new(x = bar_index, y = high , yloc = yloc.abovebar, text = "LONG 2. TP ", color = color.green, textcolor = color.rgb(0, 0, 0), style = label.style_label_down)
+        longPosition2 := false 
+        longPosition := false
+    if ( close < longEntryPrice)
+        label.new(x = bar_index, y = high , yloc = yloc.abovebar, text = "LONG SL ", color = color.red, textcolor = color.rgb(0, 0, 0), style = label.style_label_down)
+        longPosition := false
+        longPosition2 := false 
+
+if (close <= longSL and (longPosition or longPosition2))
+    label.new(x = bar_index, y = high , yloc = yloc.abovebar, text = "LONG SL ", color = color.red, textcolor = color.rgb(0, 0, 0), style = label.style_label_down)
+    longPosition := false
+    longPosition2 := false 
+
+
+if (shortCondition and not shortPosition and not shortPosition2 and not longPosition and not longPosition2)
+    shortEntryPrice := close
+    shortTP := atrLowerBand
+    shortSL := atrUpperBand
+    label.new(x = bar_index, y = high + ta.valuewhen(shortCondition, 0.5 * ta.atr(14), 0), yloc = yloc.belowbar, text = "SHORT\n Fiyat :"+ str.tostring(shortEntryPrice, "#.##") + "\n TP: " + str.tostring(shortTP, "#.##") + "\nSL: " + str.tostring(shortSL, "#.##"), color = color.red,textcolor = color.rgb(0, 0, 0),style = label.style_label_up)
+    shortPosition := true
+    shortPosition2 := true
+
+if (close < shortTP and shortPosition )
+    label.new(x = bar_index, y = high , yloc = yloc.belowbar, text = "SHORT 1. TP  ", color = color.green, textcolor = color.rgb(0, 0, 0), style = label.style_label_up)
+    shortPosition := false
+    shortPosition2 := true
+
+if ( ssl_cross_up and (shortPosition or shortPosition2))
+    if (close <= shortEntryPrice )
+        label.new(x = bar_index, y = high , yloc = yloc.belowbar, text = "SHORT 2. TP ", color = color.green, textcolor = color.rgb(0, 0, 0), style = label.style_label_up)
+        shortPosition := false
+        shortPosition2 := false
+    if (close > shortEntryPrice)
+        label.new(x = bar_index, y = high , yloc = yloc.belowbar, text = "SHORT SL ", color = color.red, textcolor = color.rgb(0, 0, 0), style = label.style_label_up)
+        shortPosition := false
+        shortPosition2 := false
+
+if (close >= shortSL and (shortPosition or shortPosition2))
+    label.new(x = bar_index, y = high , yloc = yloc.belowbar, text = "SHORT SL ", color = color.red, textcolor = color.rgb(0, 0, 0), style = label.style_label_up)
+    shortPosition := false
+    shortPosition2 := false
+
