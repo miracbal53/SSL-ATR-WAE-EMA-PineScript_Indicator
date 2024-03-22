@@ -16,3 +16,5 @@ Take Profit and Stop Loss:
 
 - Stop loss level: 2x Average True Range (ATR).
 - Take profit level: 2x ATR for half of the position, opposite crossover on SSL for the other half.
+
+
